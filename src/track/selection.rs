@@ -32,20 +32,26 @@ impl FromStr for TrackIndex {
                     if relative.is_empty() {
                         Ok(Self::Current(0))
                     } else {
-                        relative.parse::<usize>()
-                                .map(|i| Self::Current(i as isize))
+                        relative.parse::<isize>().map(Self::Current)
                     }
                 } else if let Some(relative) = s.strip_prefix('-') {
                     let relative = relative.trim();
                     if relative.is_empty() {
                         Ok(Self::Current(0))
                     } else {
-                        relative.parse::<usize>()
-                                .map(|i| Self::Current(-(i as isize)))
+                        #[allow(clippy::cast_possible_wrap)]
+                        relative
+                            .parse::<usize>()
+                            .map(|i| Self::Current(-(i as isize)))
                     }
                 } else {
-                    s.parse::<usize>()
-                            .map(|i| if i == 0 { Self::Current(0) } else { Self::Start(i as isize - 1)})
+                    s.parse::<isize>().map(|i| {
+                        if i == 0 {
+                            Self::Current(0)
+                        } else {
+                            Self::Start(i - 1)
+                        }
+                    })
                 };
                 result.map_err(|err| err.to_string())?
             }
@@ -55,10 +61,10 @@ impl FromStr for TrackIndex {
 }
 
 impl TrackIndex {
-
     pub fn resolve_raw(self, current: usize, track_count: usize) -> isize {
+        #[allow(clippy::cast_possible_wrap)]
         match self {
-            TrackIndex::Start(i) => i as isize,
+            TrackIndex::Start(i) => i,
             TrackIndex::Current(i) => current as isize + i,
             TrackIndex::End(i) => track_count as isize + i,
         }
@@ -69,7 +75,8 @@ impl TrackIndex {
 
         if raw_index < 0 {
             IndexResolve::TooSmall(raw_index)
-        } else { 
+        } else {
+            #[allow(clippy::cast_sign_loss)]
             let raw_index = raw_index as usize;
             match (raw_index).cmp(&track_count) {
                 std::cmp::Ordering::Less => IndexResolve::Ok(raw_index),
@@ -86,16 +93,15 @@ impl fmt::Debug for TrackIndex {
             Self::Start(i) => write!(f, "{}", i + 1),
             Self::Current(i) => match i.signum() {
                 -1 => write!(f, "-{}", -i),
-                1 => write!(f,  "+{}", i),
+                1 => write!(f, "+{i}"),
                 _ => write!(f, "-"),
-            }
+            },
             Self::End(i) => match i.signum() {
                 -1 => write!(f, "end-{}", -i),
-                1 => write!(f,  "end+{}", i),
+                1 => write!(f, "end+{i}"),
                 _ => write!(f, "end"),
-            }
+            },
         }
-        
     }
 }
 /*
@@ -116,38 +122,41 @@ fn main() {
 }
 */
 
-
 pub enum TrackIndexRange {
     Single(TrackIndex),
     Range(TrackIndex, TrackIndex),
 }
 
 impl TrackIndexRange {
-
     pub fn resolve(&self, current: usize, track_count: usize) -> ops::Range<usize> {
+        #[allow(clippy::range_plus_one)]
         match *self {
-            TrackIndexRange::Single(index) => {
-                match index.resolve(current, track_count) {
-                    IndexResolve::TooSmall(_) => 0..0,
-                    IndexResolve::Ok(index) => index..index + 1,
-                    IndexResolve::End(_) => 0..0,
-                    IndexResolve::TooBig(_) => 0..0,
-                }
-            }
+            TrackIndexRange::Single(index) => match index.resolve(current, track_count) {
+                IndexResolve::Ok(index) => index..index + 1,
+                IndexResolve::TooSmall(_) | IndexResolve::End(_) | IndexResolve::TooBig(_) => 0..0,
+            },
             TrackIndexRange::Range(start_index, end_index) => {
-                match (start_index.resolve(current, track_count), end_index.resolve(current, track_count)) {
+                match (
+                    start_index.resolve(current, track_count),
+                    end_index.resolve(current, track_count),
+                ) {
                     (IndexResolve::TooSmall(_), IndexResolve::Ok(end_index)) => 0..end_index + 1,
-                    (IndexResolve::TooSmall(_), IndexResolve::End(_) | IndexResolve::TooBig(_)) => 0..track_count,
-                    (IndexResolve::Ok(start_index), IndexResolve::Ok(end_index)) => start_index..end_index + 1,
-                    (IndexResolve::Ok(start_index), IndexResolve::End(_) | IndexResolve::TooBig(_)) => start_index..track_count,
-                    (_, IndexResolve::TooSmall(_)) => 0..0,
-                    (IndexResolve::End(_) | IndexResolve::TooBig(_), _) => 0..0,
+                    (IndexResolve::TooSmall(_), IndexResolve::End(_) | IndexResolve::TooBig(_)) => {
+                        0..track_count
+                    }
+                    (IndexResolve::Ok(start_index), IndexResolve::Ok(end_index)) => {
+                        start_index..end_index + 1
+                    }
+                    (
+                        IndexResolve::Ok(start_index),
+                        IndexResolve::End(_) | IndexResolve::TooBig(_),
+                    ) => start_index..track_count,
+                    (_, IndexResolve::TooSmall(_))
+                    | (IndexResolve::End(_) | IndexResolve::TooBig(_), _) => 0..0,
                 }
             }
         }
-
     }
-    
 }
 
 impl FromStr for TrackIndexRange {
@@ -165,14 +174,18 @@ impl FromStr for TrackIndexRange {
                 let start_str = interval.next().unwrap();
                 let start_index = match start_str.trim() {
                     "" => TrackIndex::Start(0),
-                    s => s.parse::<TrackIndex>().map_err(|_err| format!("`{}` is not a valid track index", s))?,
+                    s => s
+                        .parse::<TrackIndex>()
+                        .map_err(|_err| format!("`{s}` is not a valid track index"))?,
                 };
 
                 if let Some(end_str) = interval.next() {
                     // interval
                     let end_index = match end_str.trim() {
                         "" => TrackIndex::End(0),
-                        s => s.parse::<TrackIndex>().map_err(|_err| format!("`{}` is not a valid track index", s))?,
+                        s => s
+                            .parse::<TrackIndex>()
+                            .map_err(|_err| format!("`{s}` is not a valid track index"))?,
                     };
 
                     Self::Range(start_index, end_index)
@@ -184,14 +197,13 @@ impl FromStr for TrackIndexRange {
         };
         Ok(range)
     }
-
 }
 
 impl fmt::Debug for TrackIndexRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Self::Single(i) => write!(f, "{:?}", i),
-            Self::Range(start, end) => write!(f, "{:?}..{:?}", start, end),
+            Self::Single(i) => write!(f, "{i:?}"),
+            Self::Range(start, end) => write!(f, "{start:?}..{end:?}"),
         }
     }
 }
@@ -199,18 +211,24 @@ impl fmt::Debug for TrackIndexRange {
 #[derive(Debug)]
 pub struct TrackIndexSelection(pub Vec<TrackIndexRange>);
 
-
 impl TrackIndexSelection {
-    
     pub fn parse_str(s: &str) -> Result<Self, String> {
         let mut list = Vec::new();
         match s {
             "other" => {
-                list.push(TrackIndexRange::Range(TrackIndex::Start(0), TrackIndex::Current(-1)));
-                list.push(TrackIndexRange::Range(TrackIndex::Current(1), TrackIndex::End(0)));
-            },
-            _ => for part in s.split(',').map(|part| part.trim()).filter(|part| !part.is_empty()) {
-                list.push(part.parse::<TrackIndexRange>()?);
+                list.push(TrackIndexRange::Range(
+                    TrackIndex::Start(0),
+                    TrackIndex::Current(-1),
+                ));
+                list.push(TrackIndexRange::Range(
+                    TrackIndex::Current(1),
+                    TrackIndex::End(0),
+                ));
+            }
+            _ => {
+                for part in s.split(',').map(str::trim).filter(|part| !part.is_empty()) {
+                    list.push(part.parse::<TrackIndexRange>()?);
+                }
             }
         }
 
@@ -231,5 +249,4 @@ impl TrackIndexSelection {
         }
         result
     }
-    
 }

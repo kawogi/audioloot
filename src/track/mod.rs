@@ -1,40 +1,46 @@
-use std::time::Duration;
+use std::{string::ToString, time::Duration};
 
 use serenity::model::prelude::User;
 
 pub mod audiotool;
-pub mod youtube;
 pub mod selection;
+pub mod youtube;
 
 #[serenity::async_trait]
 pub trait Track: Send + Sync {
-
     fn caption(&self) -> String {
-        let artist = self.artist().as_ref().map(|v| v.to_string()).unwrap_or_else(|| "(unknown artist)".to_string());
-        let title = self.title().as_ref().map(|v| v.to_string()).unwrap_or_else(|| "(unknown title)".to_string());
+        let artist = self
+            .artist()
+            .as_ref()
+            .map_or_else(|| "(unknown artist)".to_string(), ToString::to_string);
+        let title = self
+            .title()
+            .as_ref()
+            .map_or_else(|| "(unknown title)".to_string(), ToString::to_string);
 
         let duration = if let Some(duration) = self.duration() {
             let seconds = duration.as_secs();
             format!(" ({}:{:0>2})", seconds / 60, seconds % 60)
         } else {
-            "".to_owned()
+            String::new()
         };
 
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let genre_bpm = match (&self.genre(), self.bpm()) {
-            (None, None) => "".to_owned(),
+            (None, None) => String::new(),
             (None, Some(bpm)) => format!("[@{} bpm]", bpm.round().max(0.0) as u32),
-            (Some(genre), None) => format!(" [{}]", genre),
+            (Some(genre), None) => format!(" [{genre}]"),
             (Some(genre), Some(bpm)) => format!(" [{}@{} bpm]", genre, bpm.round().max(0.0) as u32),
         };
 
         let comment = if let Some(comment) = &self.comment() {
-            format!(" \"{}\"", comment)
+            format!(" \"{comment}\"")
         } else {
-            "".to_owned()
+            String::new()
         };
 
         let mention = format!("`@{}`", self.adding_user().name);
-        format!("**{}** - **{}**{}{}{} {}", artist, title, duration, genre_bpm, comment, mention)
+        format!("**{artist}** - **{title}**{duration}{genre_bpm}{comment} {mention}",)
     }
 
     fn track_page_url(&self) -> &str;
@@ -52,5 +58,10 @@ pub trait Track: Send + Sync {
 
 #[serenity::async_trait]
 pub trait TrackRefDispatcher: Send + Sync {
-    async fn dispatch(&self, track_ref: &str, comment: Option<String>, user: &User) -> Option<Vec<Result<Box<dyn Track>, String>>>;
+    async fn dispatch(
+        &self,
+        track_ref: &str,
+        comment: Option<String>,
+        user: &User,
+    ) -> Option<Vec<Result<Box<dyn Track>, String>>>;
 }

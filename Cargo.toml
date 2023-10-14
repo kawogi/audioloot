@@ -11,11 +11,9 @@ description = "audio loot - Discord music bot"
 # serde_json = "*"
 # songbird = "*"
 
-
-
 [dependencies]
 tracing = "0.1"
-tracing-subscriber = "0.2"
+tracing-subscriber = "0.3.17"
 tracing-futures = "0.2"
 regex = "1.5.4"
 lazy_static = "1.4.0"
@@ -27,11 +25,11 @@ version = "0.11.4"
 features = ["cookies"]
 
 [dependencies.songbird]
-version = "0.2.0"
-#features = ["builtin-queue"]
+version = "0.3.2"
+features = ["builtin-queue", "yt-dlp"]
 
 [dependencies.serenity]
-version = "0.10"
+version = "0.11.6"
 #features = ["client", "voice", "rustls_backend"] # "standard_framework", 
 default-features = false
 features = [
